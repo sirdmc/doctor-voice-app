@@ -1,70 +1,95 @@
-import React, { useState, useRef } from "react";
+import React, { useState, useRef, useEffect } from "react";
 
 export default function App() {
+  // Almacenamos el texto final y el interino para mostrar en tiempo real.
+  const [finalTranscription, setFinalTranscription] = useState("");
+  const [interimTranscription, setInterimTranscription] = useState("");
+  // Estado de grabación para habilitar/deshabilitar botones.
   const [recording, setRecording] = useState(false);
-  const [transcription, setTranscription] = useState("");
-  const recognitionRef = useRef(null);
 
-  // Inicia la grabación
+  // Referencia al objeto de reconocimiento
+  const recognitionRef = useRef(null);
+  // Bandera para indicar si la parada es manual
+  const manualStopRef = useRef(false);
+  // Referencia al <textarea> para hacer autoscroll
+  const textAreaRef = useRef(null);
+
+  // Autoscroll cuando cambia el texto
+  useEffect(() => {
+    if (textAreaRef.current) {
+      textAreaRef.current.scrollTop = textAreaRef.current.scrollHeight;
+    }
+  }, [finalTranscription, interimTranscription]);
+
   const startRecording = () => {
+    // Si el navegador no soporta webkitSpeechRecognition
     if (!("webkitSpeechRecognition" in window)) {
-      alert("Tu navegador no soporta reconocimiento de voz (solo Chrome/Edge).");
+      alert("Tu navegador no soporta reconocimiento de voz (Chrome/Edge).");
       return;
     }
 
-    // Creamos el objeto de reconocimiento y lo guardamos en ref
-    recognitionRef.current = new window.webkitSpeechRecognition();
-    recognitionRef.current.continuous = true;       // Permite pausas largas
-    recognitionRef.current.interimResults = true;   // Muestra resultados parciales
+    // Marcar que NO es una parada manual
+    manualStopRef.current = false;
 
-    // Cuando empieza a grabar
+    // Crear el objeto de reconocimiento
+    recognitionRef.current = new window.webkitSpeechRecognition();
+    recognitionRef.current.continuous = true;      // Permite pausas largas
+    recognitionRef.current.interimResults = true;  // Muestra resultados parciales
+
+    // Al iniciar la grabación
     recognitionRef.current.onstart = () => {
       setRecording(true);
     };
 
-    // Cuando llega un resultado de audio a texto
+    // Cada vez que haya resultados (finales o parciales)
     recognitionRef.current.onresult = (event) => {
-      let newChunk = "";
+      let interim = "";
       for (let i = event.resultIndex; i < event.results.length; i++) {
-        newChunk += event.results[i][0].transcript + " ";
+        if (event.results[i].isFinal) {
+          // Agregamos los resultados finales a finalTranscription
+          setFinalTranscription((prev) => prev + event.results[i][0].transcript + " ");
+        } else {
+          // Mostramos los resultados parciales en interimTranscription
+          interim += event.results[i][0].transcript;
+        }
       }
-      // Concatenamos lo nuevo a lo que ya teníamos
-      setTranscription((prev) => prev + newChunk);
+      setInterimTranscription(interim);
     };
 
-    // Cuando se detiene el reconocimiento (por pausa larga u otra razón)
+    // Cuando el reconocimiento se detiene (por silencio o stop())
     recognitionRef.current.onend = () => {
       setRecording(false);
-      // 🔹 Opción: Re-iniciar automáticamente si quieres grabar indefinidamente:
-      // if (recognitionRef.current) {
-      //   recognitionRef.current.start();
-      //   setRecording(true);
-      // }
+      setInterimTranscription("");
+      if (!manualStopRef.current) {
+        // Se detuvo por silencio (no manual), reiniciamos
+        recognitionRef.current.start();
+        setRecording(true);
+      } else {
+        // Fue parada manual, limpiamos para poder iniciar de nuevo
+        recognitionRef.current = null;
+        manualStopRef.current = false;
+      }
     };
 
-    // Arrancamos el reconocimiento
+    // Iniciar reconocimiento
     recognitionRef.current.start();
   };
 
-  // Detiene la grabación y envía el texto a la base de datos
   const stopRecording = () => {
+    // Indicar que la parada es manual para que no se reinicie
+    manualStopRef.current = true;
     if (recognitionRef.current) {
-      recognitionRef.current.stop(); // Detiene la captura de audio
+      recognitionRef.current.stop();
     }
-    // Aquí hacemos el POST a tu backend para guardar la transcripción
-    fetch("https://tu-servidor.com/api/transcriptions", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ text: transcription }),
-    })
-      .then((res) => res.json())
-      .then((data) => {
-        console.log("Transcripción guardada en BD:", data);
-        // Opcional: Limpia el texto o muestra un mensaje
-        // setTranscription("");
-      })
-      .catch((err) => console.error("Error al guardar transcripción:", err));
   };
+
+  const clearTranscription = () => {
+    setFinalTranscription("");
+    setInterimTranscription("");
+  };
+
+  // La transcripción mostrada es la suma de final + interino (tiempo real)
+  const displayedText = finalTranscription + interimTranscription;
 
   return (
     <div>
@@ -75,8 +100,18 @@ export default function App() {
       <button onClick={stopRecording} disabled={!recording}>
         ⏹️ Detener
       </button>
+      <button onClick={clearTranscription}>
+        🗑️ Borrar Todo
+      </button>
+
       <h2>Transcripción:</h2>
-      <textarea value={transcription} readOnly rows="10" cols="50"></textarea>
+      <textarea
+        ref={textAreaRef}
+        value={displayedText}
+        readOnly
+        rows="10"
+        cols="50"
+      />
     </div>
   );
 }
