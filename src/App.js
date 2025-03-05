@@ -42,12 +42,12 @@ export default function App() {
     };
 
     return (
-        <div>
-            <h1>Transcripción Médica en Vivo</h1>
-            <button onClick={startRecording} disabled={recording}>🎤 Iniciar</button>
-            <button onClick={stopRecording} disabled={!recording}>⏹️ Detener</button>
-            <h2>Transcripción:</h2>
-            <textarea value={transcription} readOnly rows="10" cols="50"></textarea>
-        </div>
-    );
+      <div>
+          <h1>Transcripción Médica en Vivo</h1>
+          <button onClick={startRecording} disabled={recording}>Iniciar</button>
+          <button onClick={stopRecording} disabled={!recording}>Detener</button>
+          <h2>Transcripción:</h2>
+          <textarea value={transcription} readOnly rows="10" cols="50"></textarea>
+      </div>
+  );
 }
