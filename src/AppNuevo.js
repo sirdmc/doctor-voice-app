@@ -1,20 +1,15 @@
 import React, { useState, useRef, useEffect } from "react";
 
 export default function App() {
-  // Almacenamos el texto final y el interino para mostrar en tiempo real.
   const [finalTranscription, setFinalTranscription] = useState("");
   const [interimTranscription, setInterimTranscription] = useState("");
-  // Estado de grabación para habilitar/deshabilitar botones.
   const [recording, setRecording] = useState(false);
 
-  // Referencia al objeto de reconocimiento
   const recognitionRef = useRef(null);
-  // Bandera para indicar si la parada es manual
   const manualStopRef = useRef(false);
-  // Referencia al <textarea> para hacer autoscroll
   const textAreaRef = useRef(null);
 
-  // Autoscroll cuando cambia el texto
+  // Auto-scroll
   useEffect(() => {
     if (textAreaRef.current) {
       textAreaRef.current.scrollTop = textAreaRef.current.scrollHeight;
@@ -22,74 +17,89 @@ export default function App() {
   }, [finalTranscription, interimTranscription]);
 
   const startRecording = () => {
-    // Si el navegador no soporta webkitSpeechRecognition
     if (!("webkitSpeechRecognition" in window)) {
       alert("Tu navegador no soporta reconocimiento de voz (Chrome/Edge).");
       return;
     }
 
-    // Marcar que NO es una parada manual
     manualStopRef.current = false;
 
-    // Crear el objeto de reconocimiento
     recognitionRef.current = new window.webkitSpeechRecognition();
-    recognitionRef.current.continuous = true;      // Permite pausas largas
-    recognitionRef.current.interimResults = true;  // Muestra resultados parciales
+    recognitionRef.current.continuous = true;
+    recognitionRef.current.interimResults = true;
 
-    // Al iniciar la grabación
     recognitionRef.current.onstart = () => {
       setRecording(true);
     };
 
-    // Cada vez que haya resultados (finales o parciales)
     recognitionRef.current.onresult = (event) => {
       let interim = "";
       for (let i = event.resultIndex; i < event.results.length; i++) {
         if (event.results[i].isFinal) {
-          // Agregamos los resultados finales a finalTranscription
-          setFinalTranscription((prev) => prev + event.results[i][0].transcript + " ");
+          setFinalTranscription(prev => prev + event.results[i][0].transcript + " ");
         } else {
-          // Mostramos los resultados parciales en interimTranscription
           interim += event.results[i][0].transcript;
         }
       }
       setInterimTranscription(interim);
     };
 
-    // Cuando el reconocimiento se detiene (por silencio o stop())
     recognitionRef.current.onend = () => {
       setRecording(false);
       setInterimTranscription("");
       if (!manualStopRef.current) {
-        // Se detuvo por silencio (no manual), reiniciamos
         recognitionRef.current.start();
         setRecording(true);
       } else {
-        // Fue parada manual, limpiamos para poder iniciar de nuevo
         recognitionRef.current = null;
         manualStopRef.current = false;
       }
     };
 
-    // Iniciar reconocimiento
     recognitionRef.current.start();
   };
 
   const stopRecording = () => {
-    // Indicar que la parada es manual para que no se reinicie
     manualStopRef.current = true;
     if (recognitionRef.current) {
       recognitionRef.current.stop();
     }
   };
 
+  // Función para borrar todo el texto
   const clearTranscription = () => {
     setFinalTranscription("");
     setInterimTranscription("");
   };
 
-  // La transcripción mostrada es la suma de final + interino (tiempo real)
+  // Aquí formamos el texto que se ve en pantalla
   const displayedText = finalTranscription + interimTranscription;
+
+  // 🔹 2. Función para enviar el texto a n8n
+  const handleSave = async () => {
+    try {
+      // Reemplaza con tu URL de n8n (ej: "https://tuservidor.com/webhook/xxxx")
+      const n8nUrl = "https://novaris.app.n8n.cloud/webhook/118ad6ff-c064-478b-b0a3-3c95cc237137"; 
+      //const n8nUrl = "https://novaris.app.n8n.cloud/webhook-test/118ad6ff-c064-478b-b0a3-3c95cc237137"; 
+      const response = await fetch(n8nUrl, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ text: displayedText })
+      });
+
+      if (!response.ok) {
+        throw new Error("Error al enviar a n8n");
+      }
+
+      // Si tu webhook devuelve JSON, lo leemos aquí
+      const data = await response.json();
+      console.log("Respuesta de n8n:", data);
+      alert("Texto enviado a n8n con éxito!");
+    } catch (error) {
+      console.error("Error enviando a n8n:", error);
+      alert("Error enviando a n8n");
+    }
+  };
 
   return (
     <div>
@@ -102,6 +112,10 @@ export default function App() {
       </button>
       <button onClick={clearTranscription}>
         🗑️ Borrar Todo
+      </button>
+      {/* 🔹 1. Botón “Guardar” que llama a handleSave */}
+      <button onClick={handleSave}>
+        💾 Guardar
       </button>
 
       <h2>Transcripción:</h2>
